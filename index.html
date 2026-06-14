@@ -491,25 +491,65 @@
 
         function PopunderAdUnits() {
             useEffect(() => {
-                // Load 4 popunder ad units once per browser tab, but never on admin pages.
-                // Scripts are staggered to avoid blocking the first page render.
+                // Monetization popunder setup.
+                // Public pages: load 4 popunder units on each unique page/route.
+                // Post clicks: trigger extra popunder units with a small cooldown to avoid browser blocking.
+                // Admin pages are excluded so dashboard work is not interrupted.
                 const isAdminPage = () => window.location.hash.startsWith('#/admin');
-                if (isAdminPage() || sessionStorage.getItem('popunderAdsLoaded') === 'true') return;
-                sessionStorage.setItem('popunderAdsLoaded', 'true');
 
-                const timers = [1200, 2600, 4000, 5400].map((delay, index) => {
-                    return setTimeout(() => {
-                        if (isAdminPage()) return;
-                        const script = document.createElement('script');
-                        script.src = AD_SCRIPT_URL;
-                        script.async = true;
-                        script.dataset.popunderUnit = String(index + 1);
-                        script.referrerPolicy = 'no-referrer-when-downgrade';
-                        document.body.appendChild(script);
-                    }, delay);
-                });
+                const loadPopunderScripts = (count = 1, reason = 'page') => {
+                    if (isAdminPage()) return;
+                    for (let i = 0; i < count; i++) {
+                        setTimeout(() => {
+                            if (isAdminPage()) return;
+                            const script = document.createElement('script');
+                            script.src = AD_SCRIPT_URL;
+                            script.async = true;
+                            script.dataset.popunderReason = reason;
+                            script.dataset.popunderUnit = String(i + 1);
+                            script.referrerPolicy = 'no-referrer-when-downgrade';
+                            document.body.appendChild(script);
+                        }, i * 900);
+                    }
+                };
 
-                return () => timers.forEach(clearTimeout);
+                const runPageAds = () => {
+                    if (isAdminPage()) return;
+                    const routeKey = `pagePopunderLoaded:${window.location.hash || '#/'}`;
+                    if (sessionStorage.getItem(routeKey) === 'true') return;
+                    sessionStorage.setItem(routeKey, 'true');
+                    loadPopunderScripts(4, 'page-view');
+                };
+
+                const runPostClickAd = () => {
+                    if (isAdminPage()) return;
+                    const now = Date.now();
+                    const last = Number(sessionStorage.getItem('lastPostClickPopunder') || '0');
+                    // 20s cooldown helps more popunders open successfully instead of being blocked as spam.
+                    if (now - last < 20000) return;
+                    sessionStorage.setItem('lastPostClickPopunder', String(now));
+                    loadPopunderScripts(2, 'post-click');
+                };
+
+                const handleClick = (event) => {
+                    const link = event.target.closest && event.target.closest('a');
+                    if (!link) return;
+                    const href = link.getAttribute('href') || '';
+                    const isPostOpen = href.includes('#/posts/') || href.includes('/posts/');
+                    const isPostExternalButton = link.dataset.postButton === 'true';
+                    if (isPostOpen || isPostExternalButton) {
+                        runPostClickAd();
+                    }
+                };
+
+                runPageAds();
+                window.addEventListener('hashchange', runPageAds);
+                document.addEventListener('click', handleClick, true);
+
+                return () => {
+                    window.removeEventListener('hashchange', runPageAds);
+                    document.removeEventListener('click', handleClick, true);
+                };
             }, []);
 
             return null;
@@ -658,7 +698,7 @@
                                             </Link>
                                             <div className="px-4 pb-4">
                                                 {post.buttonUrl ? (
-                                                    <a href={normalizeOrderUrl(post.buttonUrl)} target="_blank" rel="noopener noreferrer"
+                                                    <a href={normalizeOrderUrl(post.buttonUrl)} target="_blank" rel="noopener noreferrer" data-post-button="true"
                                                         className="block w-full text-center bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700">
                                                         {getPostButtonText(post)}
                                                     </a>
@@ -1360,6 +1400,7 @@
                                     href={normalizeOrderUrl(post.buttonUrl)}
                                     target="_blank"
                                     rel="noopener noreferrer"
+                                    data-post-button="true"
                                     className="inline-block w-full sm:w-auto text-center bg-blue-600 text-white px-8 py-3 rounded-md hover:bg-blue-700 font-medium"
                                 >
                                     {getPostButtonText(post)}
@@ -1543,7 +1584,7 @@
                                         </Link>
                                         <div className="px-4 pb-4">
                                             {post.buttonUrl ? (
-                                                <a href={normalizeOrderUrl(post.buttonUrl)} target="_blank" rel="noopener noreferrer"
+                                                <a href={normalizeOrderUrl(post.buttonUrl)} target="_blank" rel="noopener noreferrer" data-post-button="true"
                                                     className="block w-full text-center bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700">
                                                     {getPostButtonText(post)}
                                                 </a>
@@ -1591,6 +1632,6 @@
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a0b7afaaafe0b77e',t:'MTc4MTQyMjgxOA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a0b7b983381c24d1',t:'MTc4MTQyMzIyMg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 
 </html>
