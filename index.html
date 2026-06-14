@@ -144,6 +144,63 @@
         const db = firebase.firestore();
         const auth = firebase.auth();
 
+        // Small inline placeholder used when a product/post has no image.
+        const PLACEHOLDER_IMAGE = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400">
+                <rect width="600" height="400" fill="#eeeeee"/>
+                <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#999999" font-family="Arial" font-size="24">No Image</text>
+            </svg>
+        `);
+
+        const safeImageUrl = (url) => {
+            return typeof url === 'string' && url.trim() ? url.trim() : PLACEHOLDER_IMAGE;
+        };
+
+        const normalizeOrderUrl = (url) => {
+            const value = typeof url === 'string' ? url.trim() : '';
+            if (!value) return '';
+            if (/^(https?:\/\/|mailto:|tel:|whatsapp:)/i.test(value)) return value;
+            return `https://${value}`;
+        };
+
+        const formatPrice = (price) => {
+            const value = Number(price);
+            return Number.isFinite(value) ? value.toLocaleString() : '0';
+        };
+
+        const getCreatedAtMillis = (item) => {
+            const value = item?.createdAt;
+            if (!value) return 0;
+            if (typeof value.toMillis === 'function') return value.toMillis();
+            if (value.seconds) return value.seconds * 1000;
+            const parsed = Date.parse(value);
+            return Number.isNaN(parsed) ? 0 : parsed;
+        };
+
+        // Firestore has a 1MB document limit. This keeps uploaded images small enough
+        // to save and show correctly when stored as a data URL.
+        const resizeImageFile = (file, maxWidth = 900, quality = 0.75) => {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onerror = () => reject(new Error('Failed to read image'));
+                reader.onload = () => {
+                    const img = new Image();
+                    img.onerror = () => reject(new Error('Invalid image file'));
+                    img.onload = () => {
+                        const scale = Math.min(1, maxWidth / img.width);
+                        const canvas = document.createElement('canvas');
+                        canvas.width = Math.round(img.width * scale);
+                        canvas.height = Math.round(img.height * scale);
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        resolve(canvas.toDataURL('image/jpeg', quality));
+                    };
+                    img.src = reader.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        };
+
         // ============================================================
         // FIREBASE DATA HELPERS
         // ============================================================
@@ -151,15 +208,15 @@
         // Listen to products in real-time
         const listenProducts = (callback) => {
             return db.collection('products')
-                .orderBy('createdAt', 'desc')
                 .onSnapshot((snapshot) => {
                     const products = [];
                     snapshot.forEach((doc) => {
                         products.push({ id: doc.id, ...doc.data() });
                     });
+                    products.sort((a, b) => getCreatedAtMillis(b) - getCreatedAtMillis(a));
                     callback(products);
                 }, (error) => {
-                    console.error("Firestore listen error:", error);
+                    console.error("Firestore products listen error:", error);
                     callback([]);
                 });
         };
@@ -167,15 +224,15 @@
         // Listen to posts in real-time
         const listenPosts = (callback) => {
             return db.collection('posts')
-                .orderBy('createdAt', 'desc')
                 .onSnapshot((snapshot) => {
                     const posts = [];
                     snapshot.forEach((doc) => {
                         posts.push({ id: doc.id, ...doc.data() });
                     });
+                    posts.sort((a, b) => getCreatedAtMillis(b) - getCreatedAtMillis(a));
                     callback(posts);
                 }, (error) => {
-                    console.error("Firestore listen error:", error);
+                    console.error("Firestore posts listen error:", error);
                     callback([]);
                 });
         };
@@ -183,18 +240,23 @@
         // Add a product to Firestore
         const addProductToFirestore = async (product) => {
             try {
+                const price = Number(product.price);
+                if (!Number.isFinite(price)) {
+                    throw new Error('Please enter a valid product price.');
+                }
                 await db.collection('products').add({
-                    name: product.name,
-                    description: product.description,
-                    price: product.price,
-                    category: product.category,
-                    imageUrl: product.imageUrl || '',
+                    name: (product.name || '').trim(),
+                    description: (product.description || '').trim(),
+                    price,
+                    category: (product.category || '').trim(),
+                    imageUrl: safeImageUrl(product.imageUrl),
+                    orderUrl: normalizeOrderUrl(product.orderUrl),
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
-                return true;
+                return { success: true };
             } catch (error) {
                 console.error("Error adding product:", error);
-                return false;
+                return { success: false, error: error.message || 'Failed to add product.' };
             }
         };
 
@@ -202,16 +264,16 @@
         const addPostToFirestore = async (post) => {
             try {
                 await db.collection('posts').add({
-                    title: post.title,
-                    htmlContent: post.htmlContent,
-                    category: post.category,
-                    imageUrl: post.imageUrl || '',
+                    title: (post.title || '').trim(),
+                    htmlContent: (post.htmlContent || '').trim(),
+                    category: (post.category || '').trim(),
+                    imageUrl: safeImageUrl(post.imageUrl),
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
-                return true;
+                return { success: true };
             } catch (error) {
                 console.error("Error adding post:", error);
-                return false;
+                return { success: false, error: error.message || 'Failed to add post.' };
             }
         };
 
@@ -367,26 +429,39 @@
                             ) : (
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                     {products.slice(0, 6).map((product) => (
-                                        <Link
+                                        <div
                                             key={product.id}
-                                            to={`/products/${product.id}`}
-                                            className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg"
+                                            className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow bg-white"
                                         >
-                                            <img
-                                                src={product.imageUrl}
-                                                alt={product.name}
-                                                className="w-full h-48 object-cover"
-                                                onError={(e) => { e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" fill="%23ddd"><rect width="400" height="200"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23999" font-size="16">No Image</text></svg>'; }}
-                                            />
-                                            <div className="p-4">
-                                                <h3 className="font-bold text-lg mb-2">{product.name}</h3>
-                                                <p className="text-gray-600 text-sm mb-2">{product.description}</p>
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-sm text-gray-500">{product.category}</span>
-                                                    <span className="font-bold text-gray-900">LKR {product.price?.toLocaleString()}</span>
+                                            <Link to={`/products/${product.id}`}>
+                                                <img
+                                                    src={safeImageUrl(product.imageUrl)}
+                                                    alt={product.name}
+                                                    className="w-full h-48 object-cover"
+                                                    onError={(e) => { e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" fill="%23ddd"><rect width="400" height="200"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23999" font-size="16">No Image</text></svg>'; }}
+                                                />
+                                                <div className="p-4">
+                                                    <h3 className="font-bold text-lg mb-2">{product.name}</h3>
+                                                    <p className="text-gray-600 text-sm mb-2">{product.description}</p>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-sm text-gray-500">{product.category}</span>
+                                                        <span className="font-bold text-gray-900">LKR {formatPrice(product.price)}</span>
+                                                    </div>
                                                 </div>
+                                            </Link>
+                                            <div className="px-4 pb-4">
+                                                {product.orderUrl ? (
+                                                    <a href={normalizeOrderUrl(product.orderUrl)} target="_blank" rel="noopener noreferrer"
+                                                        className="block w-full text-center bg-green-600 text-white py-2 rounded-md hover:bg-green-700">
+                                                        Order Now
+                                                    </a>
+                                                ) : (
+                                                    <Link to={`/products/${product.id}`} className="block w-full text-center bg-gray-900 text-white py-2 rounded-md hover:bg-gray-800">
+                                                        View Details
+                                                    </Link>
+                                                )}
                                             </div>
-                                        </Link>
+                                        </div>
                                     ))}
                                 </div>
                             )}
@@ -407,7 +482,7 @@
                                             className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg"
                                         >
                                             <img
-                                                src={post.imageUrl}
+                                                src={safeImageUrl(post.imageUrl)}
                                                 alt={post.title}
                                                 className="w-full h-48 object-cover"
                                                 onError={(e) => { e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" fill="%23ddd"><rect width="400" height="200"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23999" font-size="16">No Image</text></svg>'; }}
@@ -540,6 +615,7 @@
             const [productPrice, setProductPrice] = useState('');
             const [productCategory, setProductCategory] = useState('');
             const [productImageUrl, setProductImageUrl] = useState('');
+            const [productOrderUrl, setProductOrderUrl] = useState('');
             
             // Post form state
             const [postTitle, setPostTitle] = useState('');
@@ -583,25 +659,27 @@
                 navigate('/admin');
             };
 
-            const handleProductImageChange = (e) => {
+            const handleProductImageChange = async (e) => {
                 const file = e.target.files?.[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        setProductImageUrl(reader.result);
-                    };
-                    reader.readAsDataURL(file);
+                if (!file) return;
+                try {
+                    const resizedImage = await resizeImageFile(file);
+                    setProductImageUrl(resizedImage);
+                } catch (error) {
+                    console.error('Product image resize error:', error);
+                    alert('Image upload failed. Please try another image or paste an image URL.');
                 }
             };
 
-            const handlePostImageChange = (e) => {
+            const handlePostImageChange = async (e) => {
                 const file = e.target.files?.[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        setPostImageUrl(reader.result);
-                    };
-                    reader.readAsDataURL(file);
+                if (!file) return;
+                try {
+                    const resizedImage = await resizeImageFile(file);
+                    setPostImageUrl(resizedImage);
+                } catch (error) {
+                    console.error('Post image resize error:', error);
+                    alert('Image upload failed. Please try another image or paste an image URL.');
                 }
             };
 
@@ -609,25 +687,27 @@
                 e.preventDefault();
                 setSubmitting(true);
                 
-                const success = await addProductToFirestore({
+                const result = await addProductToFirestore({
                     name: productName,
                     description: productDescription,
-                    price: parseFloat(productPrice),
+                    price: productPrice,
                     category: productCategory,
-                    imageUrl: productImageUrl
+                    imageUrl: productImageUrl,
+                    orderUrl: productOrderUrl
                 });
                 
                 setSubmitting(false);
                 
-                if (success) {
+                if (result.success) {
                     setProductName('');
                     setProductDescription('');
                     setProductPrice('');
                     setProductCategory('');
                     setProductImageUrl('');
+                    setProductOrderUrl('');
                     alert('Product added successfully!');
                 } else {
-                    alert('Failed to add product. Check console for errors.');
+                    alert(result.error || 'Failed to add product. Check console for errors.');
                 }
             };
 
@@ -635,7 +715,7 @@
                 e.preventDefault();
                 setSubmitting(true);
                 
-                const success = await addPostToFirestore({
+                const result = await addPostToFirestore({
                     title: postTitle,
                     htmlContent: postHtmlContent,
                     category: postCategory,
@@ -644,14 +724,14 @@
                 
                 setSubmitting(false);
                 
-                if (success) {
+                if (result.success) {
                     setPostTitle('');
                     setPostHtmlContent('');
                     setPostCategory('');
                     setPostImageUrl('');
                     alert('Post added successfully!');
                 } else {
-                    alert('Failed to add post. Check console for errors.');
+                    alert(result.error || 'Failed to add post. Check console for errors.');
                 }
             };
 
@@ -761,12 +841,19 @@
                                                 placeholder="https://example.com/image.jpg" />
                                         </div>
                                         <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Order Now Link</label>
+                                            <input type="text" value={productOrderUrl} onChange={(e) => setProductOrderUrl(e.target.value)}
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-gray-900"
+                                                placeholder="https://wa.me/947xxxxxxxx or https://example.com/order" />
+                                            <p className="text-xs text-gray-500 mt-1">This link opens when customer clicks Order Now.</p>
+                                        </div>
+                                        <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">Or Upload Image</label>
                                             <input type="file" accept="image/*" onChange={handleProductImageChange}
                                                 className="w-full px-4 py-2 border border-gray-300 rounded-md" />
                                         </div>
                                         {productImageUrl && (
-                                            <img src={productImageUrl} alt="Preview" className="w-full h-48 object-cover rounded-md" />
+                                            <img src={safeImageUrl(productImageUrl)} alt="Preview" className="w-full h-48 object-cover rounded-md" />
                                         )}
                                         <button type="submit" disabled={submitting}
                                             className="w-full bg-gray-900 text-white py-2 rounded-md hover:bg-gray-800 disabled:opacity-50">
@@ -783,15 +870,18 @@
                                             products.map((product) => (
                                                 <div key={product.id} className="border border-gray-200 rounded-lg p-4">
                                                     <div className="flex gap-4">
-                                                        <img src={product.imageUrl} alt={product.name}
+                                                        <img src={safeImageUrl(product.imageUrl)} alt={product.name}
                                                             className="w-24 h-24 object-cover rounded"
                                                             onError={(e) => { e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" fill="%23ddd"><rect width="96" height="96"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23999" font-size="10">No Img</text></svg>'; }} />
                                                         <div className="flex-1">
                                                             <h3 className="font-bold text-lg">{product.name}</h3>
                                                             <p className="text-sm text-gray-600">{product.description}</p>
                                                             <p className="text-sm text-gray-500 mt-1">Category: {product.category}</p>
-                                                            <p className="font-bold text-gray-900 mt-1">LKR {product.price?.toLocaleString()}</p>
+                                                            <p className="font-bold text-gray-900 mt-1">LKR {formatPrice(product.price)}</p>
                                                             <p className="text-xs text-gray-400 mt-1">URL: /products/{product.id}</p>
+                                                            {product.orderUrl && (
+                                                                <p className="text-xs text-blue-600 mt-1 break-all">Order Link: {product.orderUrl}</p>
+                                                            )}
                                                         </div>
                                                         <button onClick={() => handleDeleteProduct(product.id)}
                                                             disabled={deleting === product.id}
@@ -846,7 +936,7 @@
                                                 className="w-full px-4 py-2 border border-gray-300 rounded-md" />
                                         </div>
                                         {postImageUrl && (
-                                            <img src={postImageUrl} alt="Preview" className="w-full h-48 object-cover rounded-md" />
+                                            <img src={safeImageUrl(postImageUrl)} alt="Preview" className="w-full h-48 object-cover rounded-md" />
                                         )}
                                         <button type="submit" disabled={submitting}
                                             className="w-full bg-gray-900 text-white py-2 rounded-md hover:bg-gray-800 disabled:opacity-50">
@@ -863,7 +953,7 @@
                                             posts.map((post) => (
                                                 <div key={post.id} className="border border-gray-200 rounded-lg p-4">
                                                     <div className="flex gap-4">
-                                                        <img src={post.imageUrl} alt={post.title}
+                                                        <img src={safeImageUrl(post.imageUrl)} alt={post.title}
                                                             className="w-24 h-24 object-cover rounded"
                                                             onError={(e) => { e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" fill="%23ddd"><rect width="96" height="96"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23999" font-size="10">No Img</text></svg>'; }} />
                                                         <div className="flex-1">
@@ -932,7 +1022,7 @@
                     <div className="container mx-auto px-4 py-12">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                             <div>
-                                <img src={product.imageUrl} alt={product.name} className="w-full rounded-lg shadow-lg"
+                                <img src={safeImageUrl(product.imageUrl)} alt={product.name} className="w-full rounded-lg shadow-lg"
                                     onError={(e) => { e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" fill="%23eee"><rect width="600" height="400"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23999" font-size="20">No Image Available</text></svg>'; }} />
                             </div>
                             <div>
@@ -943,12 +1033,23 @@
                                 <p className="text-xl text-gray-600 mb-6">{product.description}</p>
                                 <div className="bg-gray-50 rounded-lg p-6 mb-6">
                                     <p className="text-sm text-gray-500 mb-2">Price</p>
-                                    <p className="text-4xl font-bold text-gray-900">LKR {product.price?.toLocaleString()}</p>
+                                    <p className="text-4xl font-bold text-gray-900">LKR {formatPrice(product.price)}</p>
                                 </div>
                                 <div className="flex gap-4">
-                                    <button className="flex-1 bg-gray-900 text-white px-6 py-3 rounded-md hover:bg-gray-800">
-                                        Contact to Purchase
-                                    </button>
+                                    {product.orderUrl ? (
+                                        <a
+                                            href={normalizeOrderUrl(product.orderUrl)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex-1 text-center bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700"
+                                        >
+                                            Order Now
+                                        </a>
+                                    ) : (
+                                        <button disabled className="flex-1 bg-gray-400 text-white px-6 py-3 rounded-md cursor-not-allowed">
+                                            Order Now
+                                        </button>
+                                    )}
                                     <Link to="/products" className="flex-1 text-center border border-gray-900 text-gray-900 px-6 py-3 rounded-md hover:bg-gray-100">
                                         Back to Products
                                     </Link>
@@ -1010,7 +1111,7 @@
                             <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm">{post.category}</span>
                         </div>
                         <h1 className="text-4xl font-bold text-gray-900 mb-6">{post.title}</h1>
-                        <img src={post.imageUrl} alt={post.title} className="w-full rounded-lg shadow-lg mb-8"
+                        <img src={safeImageUrl(post.imageUrl)} alt={post.title} className="w-full rounded-lg shadow-lg mb-8"
                             onError={(e) => { e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" fill="%23eee"><rect width="800" height="400"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23999" font-size="20">No Image</text></svg>'; }} />
                         <div className="prose prose-lg max-w-none" dangerouslySetInnerHTML={{ __html: post.htmlContent }} />
                         <div className="mt-12 pt-6 border-t border-gray-200">
@@ -1080,19 +1181,33 @@
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
                                 {filteredProducts.map((product) => (
-                                    <Link key={product.id} to={`/products/${product.id}`}
-                                        className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-                                        <img src={product.imageUrl} alt={product.name} className="w-full h-48 object-cover"
-                                            onError={(e) => { e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" fill="%23ddd"><rect width="400" height="200"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23999" font-size="16">No Image</text></svg>'; }} />
-                                        <div className="p-4">
-                                            <h3 className="font-bold text-lg mb-2">{product.name}</h3>
-                                            <p className="text-gray-600 text-sm mb-2 line-clamp-2">{product.description}</p>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-sm text-gray-500">{product.category}</span>
-                                                <span className="font-bold text-gray-900">LKR {product.price?.toLocaleString()}</span>
+                                    <div key={product.id}
+                                        className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow bg-white">
+                                        <Link to={`/products/${product.id}`}>
+                                            <img src={safeImageUrl(product.imageUrl)} alt={product.name} className="w-full h-48 object-cover"
+                                                onError={(e) => { e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" fill="%23ddd"><rect width="400" height="200"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23999" font-size="16">No Image</text></svg>'; }} />
+                                            <div className="p-4">
+                                                <h3 className="font-bold text-lg mb-2">{product.name}</h3>
+                                                <p className="text-gray-600 text-sm mb-2 line-clamp-2">{product.description}</p>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-sm text-gray-500">{product.category}</span>
+                                                    <span className="font-bold text-gray-900">LKR {formatPrice(product.price)}</span>
+                                                </div>
                                             </div>
+                                        </Link>
+                                        <div className="px-4 pb-4">
+                                            {product.orderUrl ? (
+                                                <a href={normalizeOrderUrl(product.orderUrl)} target="_blank" rel="noopener noreferrer"
+                                                    className="block w-full text-center bg-green-600 text-white py-2 rounded-md hover:bg-green-700">
+                                                    Order Now
+                                                </a>
+                                            ) : (
+                                                <Link to={`/products/${product.id}`} className="block w-full text-center bg-gray-900 text-white py-2 rounded-md hover:bg-gray-800">
+                                                    View Details
+                                                </Link>
+                                            )}
                                         </div>
-                                    </Link>
+                                    </div>
                                 ))}
                             </div>
                         )}
@@ -1162,7 +1277,7 @@
                                 {filteredPosts.map((post) => (
                                     <Link key={post.id} to={`/posts/${post.id}`}
                                         className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-                                        <img src={post.imageUrl} alt={post.title} className="w-full h-48 object-cover"
+                                        <img src={safeImageUrl(post.imageUrl)} alt={post.title} className="w-full h-48 object-cover"
                                             onError={(e) => { e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" fill="%23ddd"><rect width="400" height="200"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23999" font-size="16">No Image</text></svg>'; }} />
                                         <div className="p-4">
                                             <h3 className="font-bold text-lg mb-2">{post.title}</h3>
@@ -1203,6 +1318,6 @@
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script><script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-</body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a0b7662f0bd75132',t:'MTc4MTQxOTgwOQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 
 </html>
