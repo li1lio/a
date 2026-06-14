@@ -163,6 +163,11 @@
             return `https://${value}`;
         };
 
+        const getProductButtonText = (product) => {
+            const text = typeof product?.buttonText === 'string' ? product.buttonText.trim() : '';
+            return text || 'Order Now';
+        };
+
         const formatPrice = (price) => {
             const value = Number(price);
             return Number.isFinite(value) ? value.toLocaleString() : '0';
@@ -251,6 +256,7 @@
                     category: (product.category || '').trim(),
                     imageUrl: safeImageUrl(product.imageUrl),
                     orderUrl: normalizeOrderUrl(product.orderUrl),
+                    buttonText: (product.buttonText || 'Order Now').trim() || 'Order Now',
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
                 return { success: true };
@@ -453,7 +459,7 @@
                                                 {product.orderUrl ? (
                                                     <a href={normalizeOrderUrl(product.orderUrl)} target="_blank" rel="noopener noreferrer"
                                                         className="block w-full text-center bg-green-600 text-white py-2 rounded-md hover:bg-green-700">
-                                                        Order Now
+                                                        {getProductButtonText(product)}
                                                     </a>
                                                 ) : (
                                                     <Link to={`/products/${product.id}`} className="block w-full text-center bg-gray-900 text-white py-2 rounded-md hover:bg-gray-800">
@@ -616,6 +622,7 @@
             const [productCategory, setProductCategory] = useState('');
             const [productImageUrl, setProductImageUrl] = useState('');
             const [productOrderUrl, setProductOrderUrl] = useState('');
+            const [productButtonText, setProductButtonText] = useState('Order Now');
             
             // Post form state
             const [postTitle, setPostTitle] = useState('');
@@ -693,7 +700,8 @@
                     price: productPrice,
                     category: productCategory,
                     imageUrl: productImageUrl,
-                    orderUrl: productOrderUrl
+                    orderUrl: productOrderUrl,
+                    buttonText: productButtonText
                 });
                 
                 setSubmitting(false);
@@ -705,6 +713,7 @@
                     setProductCategory('');
                     setProductImageUrl('');
                     setProductOrderUrl('');
+                    setProductButtonText('Order Now');
                     alert('Product added successfully!');
                 } else {
                     alert(result.error || 'Failed to add product. Check console for errors.');
@@ -841,11 +850,31 @@
                                                 placeholder="https://example.com/image.jpg" />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">Order Now Link</label>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Button Link</label>
                                             <input type="text" value={productOrderUrl} onChange={(e) => setProductOrderUrl(e.target.value)}
                                                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-gray-900"
                                                 placeholder="https://wa.me/947xxxxxxxx or https://example.com/order" />
-                                            <p className="text-xs text-gray-500 mt-1">This link opens when customer clicks Order Now.</p>
+                                            <p className="text-xs text-gray-500 mt-1">This link opens when customer clicks the product button.</p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Button Text</label>
+                                            <input
+                                                type="text"
+                                                list="product-button-text-options"
+                                                value={productButtonText}
+                                                onChange={(e) => setProductButtonText(e.target.value)}
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-gray-900"
+                                                placeholder="Order Now, Buy Now, Download Now..."
+                                                required
+                                            />
+                                            <datalist id="product-button-text-options">
+                                                <option value="Order Now" />
+                                                <option value="Buy Now" />
+                                                <option value="Order via WhatsApp" />
+                                                <option value="Purchase Now" />
+                                                <option value="Download Now" />
+                                            </datalist>
+                                            <p className="text-xs text-gray-500 mt-1">You can type any custom button name.</p>
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">Or Upload Image</label>
@@ -879,8 +908,9 @@
                                                             <p className="text-sm text-gray-500 mt-1">Category: {product.category}</p>
                                                             <p className="font-bold text-gray-900 mt-1">LKR {formatPrice(product.price)}</p>
                                                             <p className="text-xs text-gray-400 mt-1">URL: /products/{product.id}</p>
+                                                            <p className="text-xs text-gray-500 mt-1">Button: {getProductButtonText(product)}</p>
                                                             {product.orderUrl && (
-                                                                <p className="text-xs text-blue-600 mt-1 break-all">Order Link: {product.orderUrl}</p>
+                                                                <p className="text-xs text-blue-600 mt-1 break-all">Button Link: {product.orderUrl}</p>
                                                             )}
                                                         </div>
                                                         <button onClick={() => handleDeleteProduct(product.id)}
@@ -1043,11 +1073,11 @@
                                             rel="noopener noreferrer"
                                             className="flex-1 text-center bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700"
                                         >
-                                            Order Now
+                                            {getProductButtonText(product)}
                                         </a>
                                     ) : (
                                         <button disabled className="flex-1 bg-gray-400 text-white px-6 py-3 rounded-md cursor-not-allowed">
-                                            Order Now
+                                            {getProductButtonText(product)}
                                         </button>
                                     )}
                                     <Link to="/products" className="flex-1 text-center border border-gray-900 text-gray-900 px-6 py-3 rounded-md hover:bg-gray-100">
@@ -1199,7 +1229,7 @@
                                             {product.orderUrl ? (
                                                 <a href={normalizeOrderUrl(product.orderUrl)} target="_blank" rel="noopener noreferrer"
                                                     className="block w-full text-center bg-green-600 text-white py-2 rounded-md hover:bg-green-700">
-                                                    Order Now
+                                                    {getProductButtonText(product)}
                                                 </a>
                                             ) : (
                                                 <Link to={`/products/${product.id}`} className="block w-full text-center bg-gray-900 text-white py-2 rounded-md hover:bg-gray-800">
@@ -1318,6 +1348,6 @@
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script><script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a0b7662f0bd75132',t:'MTc4MTQxOTgwOQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a0b770dc1e6e24d1',t:'MTc4MTQyMDI0Ng=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 
 </html>
