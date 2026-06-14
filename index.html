@@ -8,6 +8,7 @@
     
     <!-- Firebase SDKs (compat mode for CDN use) -->
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-analytics-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     
@@ -126,17 +127,20 @@
         // FIREBASE CONFIG
         // ============================================================
         const firebaseConfig = {
-            apiKey: "AIzaSyCoFlxGu97FqxdqPR5WXpyYpgXuP47TM5o",
-            authDomain: "sadeex-ea126.firebaseapp.com",
-            projectId: "sadeex-ea126",
-            storageBucket: "sadeex-ea126.firebasestorage.app",
-            messagingSenderId: "337468927784",
-            appId: "1:337468927784:web:c185e6841431f728986a1d",
-            measurementId: "G-XCQ1F4LP8L"
+            apiKey: "AIzaSyB_tiBKyO13wwCYDV4xRo3VnTaQ3K6igM0",
+            authDomain: "fir-d36a3.firebaseapp.com",
+            projectId: "fir-d36a3",
+            storageBucket: "fir-d36a3.firebasestorage.app",
+            messagingSenderId: "612214496821",
+            appId: "1:612214496821:web:f13328a3ed32df207c5b7c",
+            measurementId: "G-1EL9XTXC0C"
         };
 
         // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
+        if (firebase.analytics) {
+            firebase.analytics();
+        }
         const db = firebase.firestore();
         const auth = firebase.auth();
 
@@ -1198,7 +1202,7 @@
         // Render the app
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
-    </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a0b719628bacb77e',t:'MTc4MTQxNjY2Mw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+    </script><script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
 
 </html>
