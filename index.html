@@ -173,6 +173,64 @@
                 padding: 0.85rem;
             }
         }
+
+        /* Extra responsive ad units */
+        .extra-ad-grid {
+            display: grid;
+            grid-template-columns: 1fr 300px 180px;
+            gap: 1rem;
+            align-items: start;
+            margin-top: 1rem;
+        }
+        .native-ad-card,
+        .iframe-ad-card {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.75rem;
+            padding: 0.75rem;
+            overflow: hidden;
+        }
+        .native-ad-card {
+            min-height: 120px;
+        }
+        .iframe-ad-inner {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 80px;
+            width: 100%;
+        }
+        .iframe-ad-160x300 .iframe-ad-inner {
+            min-height: 300px;
+        }
+        .iframe-ad-300x250 .iframe-ad-inner {
+            min-height: 250px;
+        }
+        @media (max-width: 1024px) {
+            .extra-ad-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+            .native-ad-card {
+                grid-column: 1 / -1;
+            }
+        }
+        @media (max-width: 640px) {
+            .extra-ad-grid {
+                grid-template-columns: 1fr;
+                gap: 0.75rem;
+                margin-top: 0.75rem;
+            }
+            .iframe-ad-card {
+                padding: 0.65rem;
+            }
+            .iframe-ad-inner {
+                transform-origin: top center;
+            }
+            .iframe-ad-160x300 .iframe-ad-inner,
+            .iframe-ad-300x250 .iframe-ad-inner {
+                min-height: auto;
+            }
+        }
     </style>
 </head>
 
@@ -450,6 +508,22 @@
         // ============================================================
         const AD_SCRIPT_URL = "https://hecticwelcomingassociation.com/dd/3e/63/dd3e63cb85c7f37892c476ea203734ac.js";
         const AD_LINK_URL = "https://hecticwelcomingassociation.com/p62i62nvs?key=d5a8c27e0a22da11e0607fe8532afe52";
+        const NATIVE_AD_SCRIPT_URL = "https://hecticwelcomingassociation.com/3d746d146b076df722c2f681fdd15e79/invoke.js";
+        const NATIVE_AD_CONTAINER_ID = "container-3d746d146b076df722c2f681fdd15e79";
+        const IFRAME_AD_160 = {
+            key: "e84b9bafa6de1b59679fbbe7227e5399",
+            src: "https://hecticwelcomingassociation.com/e84b9bafa6de1b59679fbbe7227e5399/invoke.js",
+            width: 160,
+            height: 300,
+            className: "iframe-ad-160x300"
+        };
+        const IFRAME_AD_300 = {
+            key: "aaa44a0bb679d29eef80945e6650a585",
+            src: "https://hecticwelcomingassociation.com/aaa44a0bb679d29eef80945e6650a585/invoke.js",
+            width: 300,
+            height: 250,
+            className: "iframe-ad-300x250"
+        };
 
         function ScriptAdUnit() {
             const adRef = useRef(null);
@@ -555,6 +629,67 @@
             return null;
         }
 
+        function NativeAdUnit() {
+            const nativeRef = useRef(null);
+
+            useEffect(() => {
+                const container = nativeRef.current;
+                if (!container || container.dataset.loaded === 'true') return;
+                container.dataset.loaded = 'true';
+
+                // The ad network expects this exact container id.
+                container.innerHTML = `<div id="${NATIVE_AD_CONTAINER_ID}"></div>`;
+                const script = document.createElement('script');
+                script.async = true;
+                script.setAttribute('data-cfasync', 'false');
+                script.src = NATIVE_AD_SCRIPT_URL;
+                container.appendChild(script);
+            }, []);
+
+            return (
+                <div className="native-ad-card">
+                    <span className="ad-label">Advertisement</span>
+                    <div ref={nativeRef} className="w-full min-h-[80px]"></div>
+                </div>
+            );
+        }
+
+        function IframeAdUnit({ config, delay = 0 }) {
+            const frameRef = useRef(null);
+
+            useEffect(() => {
+                const container = frameRef.current;
+                if (!container || container.dataset.loaded === 'true') return;
+                container.dataset.loaded = 'true';
+
+                const timer = setTimeout(() => {
+                    window.atOptions = {
+                        key: config.key,
+                        format: 'iframe',
+                        height: config.height,
+                        width: config.width,
+                        params: {}
+                    };
+                    const script = document.createElement('script');
+                    script.src = config.src;
+                    script.async = false;
+                    script.referrerPolicy = 'no-referrer-when-downgrade';
+                    container.appendChild(script);
+                }, delay);
+
+                return () => clearTimeout(timer);
+            }, []);
+
+            return (
+                <div className={`iframe-ad-card ${config.className}`}>
+                    <span className="ad-label">Advertisement</span>
+                    <div ref={frameRef} className="iframe-ad-inner">
+                        <span className="text-xs text-gray-400">Sponsored</span>
+                    </div>
+                </div>
+            );
+        }
+
         function PageAdSection() {
             return (
                 <section className="ad-section py-3 sm:py-4">
@@ -562,6 +697,11 @@
                         <div className="ad-grid">
                             <ScriptAdUnit />
                             <DirectAdUnit />
+                        </div>
+                        <div className="extra-ad-grid">
+                            <NativeAdUnit />
+                            <IframeAdUnit config={IFRAME_AD_300} delay={150} />
+                            <IframeAdUnit config={IFRAME_AD_160} delay={900} />
                         </div>
                     </div>
                 </section>
@@ -1632,6 +1772,6 @@
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a0b7b983381c24d1',t:'MTc4MTQyMzIyMg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a0b7c2aa5bf95138',t:'MTc4MTQyMzU5Nw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 
 </html>
