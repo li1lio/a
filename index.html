@@ -489,6 +489,32 @@
             );
         }
 
+        function PopunderAdUnits() {
+            useEffect(() => {
+                // Load 4 popunder ad units once per browser tab, but never on admin pages.
+                // Scripts are staggered to avoid blocking the first page render.
+                const isAdminPage = () => window.location.hash.startsWith('#/admin');
+                if (isAdminPage() || sessionStorage.getItem('popunderAdsLoaded') === 'true') return;
+                sessionStorage.setItem('popunderAdsLoaded', 'true');
+
+                const timers = [1200, 2600, 4000, 5400].map((delay, index) => {
+                    return setTimeout(() => {
+                        if (isAdminPage()) return;
+                        const script = document.createElement('script');
+                        script.src = AD_SCRIPT_URL;
+                        script.async = true;
+                        script.dataset.popunderUnit = String(index + 1);
+                        script.referrerPolicy = 'no-referrer-when-downgrade';
+                        document.body.appendChild(script);
+                    }, delay);
+                });
+
+                return () => timers.forEach(clearTimeout);
+            }, []);
+
+            return null;
+        }
+
         function PageAdSection() {
             return (
                 <section className="ad-section py-3 sm:py-4">
@@ -1544,8 +1570,10 @@
         // Main App Component
         function App() {
             return (
-                <HashRouter>
-                    <Routes>
+                <>
+                    <PopunderAdUnits />
+                    <HashRouter>
+                        <Routes>
                         <Route path="/" element={<HomePage />} />
                         <Route path="/admin" element={<AdminLogin />} />
                         <Route path="/admin/dashboard" element={<AdminDashboard />} />
@@ -1553,8 +1581,9 @@
                         <Route path="/products/:id" element={<ProductDetail />} />
                         <Route path="/posts" element={<AllPosts />} />
                         <Route path="/posts/:id" element={<PostDetail />} />
-                    </Routes>
-                </HashRouter>
+                        </Routes>
+                    </HashRouter>
+                </>
             );
         }
 
@@ -1562,6 +1591,6 @@
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a0b79de15f5ab77e',t:'MTc4MTQyMjA5MA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a0b7afaaafe0b77e',t:'MTc4MTQyMjgxOA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 
 </html>
